@@ -7,6 +7,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import Message
 from aiogram.filters import CommandStart, Command
@@ -21,9 +22,9 @@ BOT_TOKEN = settings.TELEGRAM_BOT_TOKEN
 
 bot = Bot(token=BOT_TOKEN)
 
-redis_url = 'redis://localhost:6379/0'
-dp = Dispatcher(storage=RedisStorage.from_url(redis_url))
 
+storage = MemoryStorage()
+dp = Dispatcher(storage=storage)
 
 class HelpState(StatesGroup):
     waiting_for_message = State()
