@@ -3,6 +3,7 @@ import logging
 import sys
 
 
+
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -10,23 +11,23 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import Message
 from aiogram.filters import CommandStart, Command
-from config import settings
 
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, FSInputFile
 import tempfile, os, aiohttp
-
-from aiogram.fsm.storage.redis import RedisStorage
 from redis.asyncio import Redis
+from aiogram.fsm.storage.redis import RedisStorage
+from config import settings
+
+
+
+redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+storage = RedisStorage(redis=redis)
+dp = Dispatcher(storage=storage)
+
 
 
 ADMIN_ID = settings.ADMIN_ID
-BOT_TOKEN = settings.TELEGRAM_BOT_TOKEN
 
-bot = Bot(token=BOT_TOKEN)
-
-redis = Redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
-storage = RedisStorage(redis=redis)
-dp = Dispatcher(storage=storage)
 
 
 class HelpState(StatesGroup):
@@ -242,7 +243,6 @@ async def handle_message(message: Message):
 
     user_module = await dp.storage.redis.get(f"user_module:{user_id}")
     if user_module:
-        user_module = user_module.decode()
         darslar = MODULES.get(user_module, {})
 
         if text in darslar:
@@ -307,12 +307,13 @@ async def lessons_count(message: Message):
 
 
 async def main():
-    bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     try:
         print("Polling boshlanmoqda...")
         await dp.start_polling(bot)
     finally:
         await bot.session.close()
+
 
 
 if __name__ == "__main__":
