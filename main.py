@@ -24,10 +24,10 @@ BOT_TOKEN = settings.TELEGRAM_BOT_TOKEN
 
 bot = Bot(token=BOT_TOKEN)
 
-redis = Redis.from_url(settings.REDIS_URL)
+redis = Redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
 storage = RedisStorage(redis=redis)
-
 dp = Dispatcher(storage=storage)
+
 
 class HelpState(StatesGroup):
     waiting_for_message = State()
