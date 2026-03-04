@@ -304,7 +304,7 @@ async def lessons_count_handler(message: Message):
         return
 
     text = f"📊 Umumiy yuklangan darslar soni: {total_downloads}\n\n" + "\n".join(text_lines)
-
+    print(lesson_counts)
     await message.answer(text)
 
 
