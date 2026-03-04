@@ -2,12 +2,12 @@ import asyncio
 import logging
 import sys
 
+
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import Message
 from aiogram.filters import CommandStart, Command
 from config import settings
@@ -15,14 +15,18 @@ from config import settings
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, FSInputFile
 import tempfile, os, aiohttp
 
+from aiogram.fsm.storage.redis import RedisStorage
+from redis.asyncio import Redis
+
 
 ADMIN_ID = settings.ADMIN_ID
 BOT_TOKEN = settings.TELEGRAM_BOT_TOKEN
 
 bot = Bot(token=BOT_TOKEN)
 
+redis = Redis.from_url(settings.REDIS_URL)
+storage = RedisStorage(redis=redis)
 
-storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 
 class HelpState(StatesGroup):
@@ -220,16 +224,15 @@ async def stats_handler(message: Message):
     users_count = len(users)
     await message.answer(f"👥 Foydalanuvchilar soni: {users_count}")
 
-
 @dp.message()
 async def handle_message(message: Message):
     text = message.text
     user_id = message.from_user.id
 
-
     if text in MODULES:
-        user_modules[user_id] = text
+        await dp.storage.redis.set(f"user_module:{user_id}", text)
 
+        # Modul darslari uchun tugmalar
         buttons = [[KeyboardButton(text=dars)] for dars in MODULES[text].keys()]
         buttons.append([KeyboardButton(text="⬅️ Orqaga")])
 
@@ -237,17 +240,14 @@ async def handle_message(message: Message):
         await message.answer(f"{text} darslari:", reply_markup=kb)
         return
 
-
-    user_module = user_modules.get(user_id)
-
+    user_module = await dp.storage.redis.get(f"user_module:{user_id}")
     if user_module:
+        user_module = user_module.decode()
         darslar = MODULES.get(user_module, {})
 
         if text in darslar:
-
-
-            key = f"{user_module}:{text}"
-            lesson_counts[key] = lesson_counts.get(key, 0) + 1
+            key = f"lesson:{user_module}:{text}"
+            await dp.storage.redis.incr(key)
 
             url = darslar[text]
 
@@ -258,6 +258,7 @@ async def handle_message(message: Message):
                         return
                     file_data = await resp.read()
                     file_name = url.split("/")[-1]
+
 
             with tempfile.NamedTemporaryFile(delete=False, suffix=file_name) as tmp_file:
                 tmp_file.write(file_data)
@@ -270,9 +271,8 @@ async def handle_message(message: Message):
             os.remove(tmp_path)
             return
 
-
     if text == "⬅️ Orqaga":
-        user_modules.pop(user_id, None)
+        await dp.storage.redis.delete(f"user_module:{user_id}")
 
         buttons = [[KeyboardButton(text=module)] for module in MODULES.keys()]
         kb = ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
@@ -281,30 +281,28 @@ async def handle_message(message: Message):
         return
 
 
+
 @dp.message(Command("lessons_count"))
-async def lessons_count_handler(message: Message):
+async def lessons_count(message: Message):
     if message.from_user.id != ADMIN_ID:
         await message.answer("❌ Sizda bu komandani ishlatish huquqi yo'q.")
         return
 
-    text_lines = []
-    total_downloads = 0
+    keys = await redis.keys("lesson:*")
 
-    for module_name, darslar in MODULES.items():
-        for dars_name in darslar.keys():
-            key = f"{module_name}:{dars_name}"
-            count = lesson_counts.get(key, 0)
-
-            if count > 0:
-                total_downloads += count
-                text_lines.append(f"• {module_name} - {dars_name}: {count} yuklash")
-
-    if total_downloads == 0:
+    if not keys:
         await message.answer("📊 Hali hech qanday dars yuklanmagan.")
         return
 
-    text = f"📊 Umumiy yuklangan darslar soni: {total_downloads}\n\n" + "\n".join(text_lines)
-    print(lesson_counts)
+    text = "📊 Darslar statistikasi:\n\n"
+
+    total = 0
+    for key in keys:
+        count = await redis.get(key)
+        total += int(count)
+        text += f"• {key.replace('lesson:', '')} — {count} marta yuklangan\n"
+
+    text += f"\n📌 Umumiy yuklashlar soni: {total}"
     await message.answer(text)
 
 
