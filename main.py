@@ -280,6 +280,7 @@ async def handle_message(message: Message):
         await message.answer("Modullardan birini tanlang:", reply_markup=kb)
         return
 
+
 @dp.message(Command("lessons_count"))
 async def lessons_count_handler(message: Message):
     if message.from_user.id != ADMIN_ID:
@@ -297,6 +298,10 @@ async def lessons_count_handler(message: Message):
             if count > 0:
                 total_downloads += count
                 text_lines.append(f"• {module_name} - {dars_name}: {count} yuklash")
+
+    if total_downloads == 0:
+        await message.answer("📊 Hali hech qanday dars yuklanmagan.")
+        return
 
     text = f"📊 Umumiy yuklangan darslar soni: {total_downloads}\n\n" + "\n".join(text_lines)
 
