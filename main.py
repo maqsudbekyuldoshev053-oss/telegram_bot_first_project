@@ -8,7 +8,6 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import Message
 from aiogram.filters import CommandStart, Command
 from config import settings
@@ -109,14 +108,15 @@ MODULES = {
     },
 }
 
-
+users = set()
+user_modules = {}
+lesson_counts = {}
 
 @dp.message(CommandStart())
 async def start_handler(message: Message):
+    users.add(message.from_user.id)
+
     await message.answer('Xush kelibsiz')
-
-
-    await dp.storage.redis.sadd("users", message.from_user.id)
 
     kb_buttons = [[KeyboardButton(text=module)] for module in MODULES.keys()]
     kb = ReplyKeyboardMarkup(keyboard=kb_buttons, resize_keyboard=True)
@@ -196,18 +196,16 @@ async def done_handler(message: Message):
     except Exception as e:
         await message.answer(f"❌ Xatolik yuz berdi: {e}")
 
-
 @dp.message(Command("broadcast"))
 async def broadcast_handler(message: Message):
     if message.from_user.id != ADMIN_ID:
         return
 
     text = message.text.replace("/broadcast ", "")
-    users = await dp.storage.redis.smembers("users")
 
-    for user in users:
+    for user_id in users:
         try:
-            await message.bot.send_message(int(user), text)
+            await message.bot.send_message(user_id, text)
         except:
             pass
 
@@ -219,17 +217,18 @@ async def stats_handler(message: Message):
     if message.from_user.id != ADMIN_ID:
         return
 
-    users_count = await dp.storage.redis.scard("users")
+    users_count = len(users)
     await message.answer(f"👥 Foydalanuvchilar soni: {users_count}")
-
 
 
 @dp.message()
 async def handle_message(message: Message):
     text = message.text
+    user_id = message.from_user.id
+
 
     if text in MODULES:
-        await dp.storage.redis.set(f"user_module:{message.from_user.id}", text)
+        user_modules[user_id] = text
 
         buttons = [[KeyboardButton(text=dars)] for dars in MODULES[text].keys()]
         buttons.append([KeyboardButton(text="⬅️ Orqaga")])
@@ -238,15 +237,17 @@ async def handle_message(message: Message):
         await message.answer(f"{text} darslari:", reply_markup=kb)
         return
 
-    user_module = await dp.storage.redis.get(f"user_module:{message.from_user.id}")
+
+    user_module = user_modules.get(user_id)
 
     if user_module:
-        user_module = user_module.decode()
         darslar = MODULES.get(user_module, {})
 
         if text in darslar:
 
-            await dp.storage.redis.incr(f"lesson:{user_module}:{text}")
+
+            key = f"{user_module}:{text}"
+            lesson_counts[key] = lesson_counts.get(key, 0) + 1
 
             url = darslar[text]
 
@@ -271,7 +272,7 @@ async def handle_message(message: Message):
 
 
     if text == "⬅️ Orqaga":
-        await dp.storage.redis.delete(f"user_module:{message.from_user.id}")
+        user_modules.pop(user_id, None)
 
         buttons = [[KeyboardButton(text=module)] for module in MODULES.keys()]
         kb = ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
@@ -290,16 +291,16 @@ async def lessons_count_handler(message: Message):
 
     for module_name, darslar in MODULES.items():
         for dars_name in darslar.keys():
-            count = await dp.storage.redis.get(f"lesson:{module_name}:{dars_name}")
-            if count is None:
-                count = "hali hech kim yuklamadi!"
-            else:
-                count = int(count)
+            key = f"{module_name}:{dars_name}"
+            count = lesson_counts.get(key, 0)
+
+            if count > 0:
                 total_downloads += count
                 text_lines.append(f"• {module_name} - {dars_name}: {count} yuklash")
 
-        text = f"📊 Umumiy yuklangan darslar soni: {total_downloads}\n\n" + "\n".join(text_lines)
-        await message.answer(text)
+    text = f"📊 Umumiy yuklangan darslar soni: {total_downloads}\n\n" + "\n".join(text_lines)
+
+    await message.answer(text)
 
 
 async def main():

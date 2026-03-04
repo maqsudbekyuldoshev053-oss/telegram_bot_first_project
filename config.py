@@ -1,10 +1,14 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class Settings(BaseSettings):
-    ADMIN_ID: int
     TELEGRAM_BOT_TOKEN: str
+    ADMIN_ID: int
 
-    class Config:
-        env_prefix = ""
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore"
+    )
+
 
 settings = Settings()
